@@ -73,9 +73,18 @@ func resourceCloudStackPortForward() *schema.Resource {
 							Required: true,
 						},
 
+						"private_end_port": {
+							Type:     schema.TypeInt,
+							Optional: true,
+						},
+
 						"public_port": {
 							Type:     schema.TypeInt,
 							Required: true,
+						},
+						"public_end_port": {
+							Type:     schema.TypeInt,
+							Optional: true,
 						},
 
 						"virtual_machine_id": {
@@ -198,7 +207,13 @@ func createPortForward(d *schema.ResourceData, meta interface{}, forward map[str
 		// If no guest IP is configured, use the primary NIC
 		p.SetNetworkid(vm.Nic[0].Networkid)
 	}
+	if privateEndPort, ok := forward["private_end_port"]; ok && privateEndPort.(int) != 0 {
+		p.SetPrivateendport(privateEndPort.(int))
+	}
 
+	if publicEndPort, ok := forward["public_end_port"]; ok && publicEndPort.(int) != 0 {
+		p.SetPublicendport(publicEndPort.(int))
+	}
 	// Do not open the firewall automatically in any case
 	p.SetOpenfirewall(false)
 
@@ -227,7 +242,6 @@ func resourceCloudStackPortForwardRead(d *schema.ResourceData, meta interface{})
 			d.SetId("")
 			return nil
 		}
-
 		return err
 	}
 
@@ -290,6 +304,28 @@ func resourceCloudStackPortForwardRead(d *schema.ResourceData, meta interface{})
 			forward["public_port"] = pubPort
 			forward["virtual_machine_id"] = f.Virtualmachineid
 
+			// Handle private end port
+			if f.Privateendport != "" {
+				privEndPort, err := strconv.Atoi(f.Privateendport)
+				if err != nil {
+					return err
+				}
+				forward["private_end_port"] = privEndPort
+			} else {
+				forward["private_end_port"] = privPort // Default to start port if not set
+			}
+
+			// Handle public end port
+			if f.Publicendport != "" {
+				pubEndPort, err := strconv.Atoi(f.Publicendport)
+				if err != nil {
+					return err
+				}
+				forward["public_end_port"] = pubEndPort
+			} else {
+				forward["public_end_port"] = pubPort // Default to start port if not set
+			}
+
 			// This one is a bit tricky. We only want to update this optional value
 			// if we've set one ourselves. If not this would become a computed value
 			// and that would mess up the calculated hash of the set item.
@@ -310,6 +346,8 @@ func resourceCloudStackPortForwardRead(d *schema.ResourceData, meta interface{})
 				"protocol":           uuid,
 				"private_port":       0,
 				"public_port":        0,
+				"private_end_port":   0,
+				"public_end_port":    0,
 				"virtual_machine_id": uuid,
 				"uuid":               uuid,
 			}
@@ -327,7 +365,6 @@ func resourceCloudStackPortForwardRead(d *schema.ResourceData, meta interface{})
 
 	return nil
 }
-
 func resourceCloudStackPortForwardUpdate(d *schema.ResourceData, meta interface{}) error {
 	// Check if the forward set as a whole has changed
 	if d.HasChange("forward") {
